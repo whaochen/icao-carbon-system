@@ -2,6 +2,7 @@ import os
 import re
 import io
 import zipfile
+import asyncio
 import pandas as pd
 import streamlit as st
 from scraper import calc_icao_methodology, query_icao_and_screenshot
@@ -50,7 +51,7 @@ with st.sidebar:
     with st.expander("⚙️ 關於背景預熱機制"):
         st.markdown("""
         * **GitHub Actions 自動化：** 專案中的 `.github/workflows/prewarm_routes.yml` 會定期觸發背景排程 (`prewarm_worker.py`)。
-        * **自動補齊：** 當 ERP 匯入新航線或標記為 `Pending` 時，背景機器人會自動連線 ICAO 官網抓取最新截圖並更新 `cache_db.csv`。
+        * **自動補齊：** 當 ERP 匯入新航線或標記為 `Pending` 時，背景機器人會自動連線更新 `cache_db.csv`。
         """)
 
     display_cols = [c for c in ['route_key', 'distance_km', 'co2_per_kg', 'status'] if c in cache_df.columns]
@@ -100,10 +101,8 @@ with tab_single:
         st.warning(f"⚠️ 目前快取庫中尚無 **{orig_code} ➔ {dest_code}** 的建檔紀錄。")
         if st.button("✨ 立即新增此航線並產出官方憑證截圖", type="primary"):
             with st.spinner("正在計算並建立新航線紀錄與憑證..."):
-                # 計算並新增
                 res = asyncio.run(query_icao_and_screenshot(orig_code, dest_code, 1.0, route_key))
                 
-                # 更新 cache_db.csv
                 new_row = pd.DataFrame([{
                     "route_key": route_key,
                     "origin_icao": orig_code,
