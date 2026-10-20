@@ -1,6 +1,7 @@
 import os
+import re
 import math
-import shutil
+import asyncio
 
 AIRPORT_COORDS = {
     "RCTP": (25.0777, 121.2328, "tw"),
@@ -41,31 +42,86 @@ def calc_icao_methodology(origin: str, dest: str, weight_kg: float = 1.0):
     return dist_km, fuel_burn_kg, co2_per_kg
 
 async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg: float = 1.0, custom_route_key: str = None) -> dict:
+    """
+    此函式供 GitHub Actions 背景機器人 (prewarm_worker.py) 執行真實的 ICAO 官網截圖。
+    在 Streamlit 網頁端若無該圖檔，絕不產生假圖或複製其他航線圖檔！
+    """
     os.makedirs("screenshots", exist_ok=True)
     w_float = float(weight_kg)
     route_key = custom_route_key or f"{origin_icao}_{dest_icao}_{int(w_float)}KG"
     img_path = f"screenshots/{route_key}.png"
 
-    # 計算距離與碳排數據
     dist_val, fuel_val, co2_val = calc_icao_methodology(origin_icao, dest_icao, w_float)
+    distance_km, fuel_burn_kg, co2_per_kg = float(dist_val), float(fuel_val), float(co2_val)
 
-    # 確保該航線對應有真正的官方原圖。如果本地沒有該檔名，優先從 screenshots 挑選一張真實官網截圖對應
-    if not os.path.exists(img_path) or os.path.getsize(img_path) < 5000:
-        all_imgs = [f for f in os.listdir("screenshots") if f.endswith(".png") and os.path.getsize(os.path.join("screenshots", f)) > 5000]
-        if all_imgs:
-            # 優先找同起點或同終點的官方截圖，若無則抓第一張真實官網圖
-            matched = [i for i in all_imgs if origin_icao in i or dest_icao in i]
-            target_img = matched[0] if matched else all_imgs[0]
-            shutil.copy(os.path.join("screenshots", target_img), img_path)
+    # 如果已經有真實官方截圖 (> 10KB)，直接回傳成功，不覆蓋它！
+    if os.path.exists(img_path) and os.path.getsize(img_path) > 10000:
+        return {
+            "route_key": route_key,
+            "origin_icao": origin_icao,
+            "dest_icao": dest_icao,
+            "base_weight_kg": w_float,
+            "distance_km": distance_km,
+            "fuel_burn_kg": fuel_burn_kg,
+            "co2_per_kg": co2_per_kg,
+            "screenshot_file": img_path,
+            "status": "Completed"
+        }
 
+    # 若在 GitHub Actions 環境下，啟動真實瀏覽器去 ICAO 官網截圖
+    try:
+        from playwright.async_api import async_playwright
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(viewport={"width": 1280, "height": 900})
+            page = await context.new_page()
+            await page.goto("https://icec.icao.int/", wait_until="networkidle", timeout=60000)
+            await page.wait_for_timeout(2000)
+
+            cargo_tab = page.locator("text=/Cargo|Shipment/i").first
+            if await cargo_tab.count() > 0:
+                await cargo_tab.click()
+                await page.wait_for_timeout(1000)
+
+            inputs = page.locator("input[type='text'], input[type='search'], input[type='number']")
+            if await inputs.count() >= 2:
+                await inputs.nth(0).fill(origin_icao)
+                await page.wait_for_timeout(1500)
+                await page.keyboard.press("ArrowDown")
+                await page.keyboard.press("Enter")
+
+                await inputs.nth(1).fill(dest_icao)
+                await page.wait_for_timeout(1500)
+                await page.keyboard.press("ArrowDown")
+                await page.keyboard.press("Enter")
+
+                weight_input = page.locator("input[placeholder*='Weight' i], input[name*='weight' i]").first
+                if await weight_input.count() > 0:
+                    await weight_input.fill(str(w_float))
+                elif await inputs.count() >= 3:
+                    await inputs.nth(2).fill(str(w_float))
+
+                calc_btn = page.locator("button:has-text('Calculate'), input[value*='Calculate']").first
+                await calc_btn.click()
+
+                await page.wait_for_selector("text=Total Trip Distance", timeout=30000)
+                await page.wait_for_timeout(2000)
+
+                summary_box = page.locator("text=Summary").locator("..").locator("..")
+                await summary_box.screenshot(path=img_path)
+            await browser.close()
+    except Exception as e:
+        print(f"Streamlit 雲端環境不執行即時截圖，交由 GitHub Actions 排程處理: {e}")
+
+    has_real_img = os.path.exists(img_path) and os.path.getsize(img_path) > 10000
     return {
         "route_key": route_key,
         "origin_icao": origin_icao,
         "dest_icao": dest_icao,
         "base_weight_kg": w_float,
-        "distance_km": float(dist_val),
-        "fuel_burn_kg": float(fuel_val),
-        "co2_per_kg": float(co2_val),
+        "distance_km": distance_km,
+        "fuel_burn_kg": fuel_burn_kg,
+        "co2_per_kg": co2_per_kg,
         "screenshot_file": img_path,
-        "status": "Completed"
+        "status": "Completed" if has_real_img else "Pending"
     }
