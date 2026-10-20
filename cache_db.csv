@@ -1,5 +1,4 @@
 ﻿route_key,origin_icao,dest_icao,base_weight_kg,distance_km,fuel_burn_kg,co2_per_kg,screenshot_file,status
-RCTP_WMKK_1KG,RCTP,WMKK,1,3239,26536,1.89,screenshots/RCTP_WMKK_1KG.png,Completed
 ZSPD_RCTP_1KG,ZSPD,RCTP,1,777,6365,0.45,screenshots/ZSPD_RCTP_1KG.png,Completed
 ZSPD_VVNB_1KG,ZSPD,VVNB,1,2037,16687,1.19,screenshots/ZSPD_VVNB_1KG.png,Completed
 ZSPD_WMKK_1KG,ZSPD,WMKK,1,3897,31924,2.27,screenshots/ZSPD_WMKK_1KG.png,Completed
