@@ -45,14 +45,9 @@ async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg:
     route_key = custom_route_key or f"{origin_icao}_{dest_icao}_{int(w_float)}KG"
     img_path = f"screenshots/{route_key}.png"
 
-    dist_val, fuel_val, co2_val = calc_icao_methodology(origin_icao, dest_icao, w_float)
+    dist_km, fuel_val, co2_val = calc_icao_methodology(origin_icao, dest_icao, w_float)
 
-    # 直接使用 Python 生成高品質的 SVG / HTML 格式憑證，並轉存為文字快取 (或直接回傳)
-    # 為了讓前端 st.image 完美顯示，我們建立一個簡潔的文字憑證圖檔
-    flag_o = AIRPORT_COORDS.get(origin_icao, (0, 0, "tw"))[2]
-    flag_d = AIRPORT_COORDS.get(dest_icao, (0, 0, "cn"))[2]
-    
-    # 產生一張乾淨的 SVG 憑證圖檔並存為 .png 替身或直接繪製
+    # 建立乾淨的 SVG 憑證圖檔
     svg_content = f'''<svg width="980" height="220" xmlns="http://www.w3.org/2000/svg">
       <style>
         .bg {{ fill: #ffffff; stroke: #e0e0e0; stroke-width: 1px; }}
@@ -67,21 +62,19 @@ async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg:
       <text x="30" y="35" class="title">Summary</text>
       <line x1="30" y1="50" x2="950" y2="50" stroke="#eaeaea" stroke-width="1"/>
       
-      <!-- 航線 -->
       <text x="30" y="90" class="code">{origin_icao}</text>
       <text x="140" y="88" fill="#0099cc" font-size="28" font-family="Arial">&#x27F6;</text>
       <text x="200" y="90" class="code">{dest_icao}</text>
 
-      <!-- 數據表格區塊 -->
       <rect x="30" y="115" width="300" height="75" fill="#ffffff" stroke="#f0f0f0"/>
       <text x="45" y="140" class="label">Shipment Weight</text>
       <text x="260" y="140" class="val">{w_float:g} KG</text>
       <text x="45" y="170" class="label">Total Trip Distance</text>
-      <text x="240" y="170" class="val">{dist_km:,} KM</text>
+      <text x="240" y="170" class="val">{dist_km} KM</text>
 
       <rect x="340" y="115" width="300" height="75" class="box2"/>
       <text x="355" y="140" class="label">Total Aircraft Fuel Burn</text>
-      <text x="545" y="140" class="val">{fuel_val:,} KG</text>
+      <text x="545" y="140" class="val">{fuel_val} KG</text>
 
       <rect x="650" y="115" width="300" height="75" class="box3"/>
       <text x="665" y="140" class="label">Total shipment CO₂</text>
@@ -96,7 +89,7 @@ async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg:
         "origin_icao": origin_icao,
         "dest_icao": dest_icao,
         "base_weight_kg": w_float,
-        "distance_km": float(dist_val),
+        "distance_km": float(dist_km),
         "fuel_burn_kg": float(fuel_val),
         "co2_per_kg": float(co2_val),
         "screenshot_file": img_path,
