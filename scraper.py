@@ -1,7 +1,5 @@
 import os
 import math
-import asyncio
-from playwright.async_api import async_playwright
 
 AIRPORT_COORDS = {
     "RCTP": (25.0777, 121.2328, "tw"),
@@ -41,55 +39,66 @@ def calc_icao_methodology(origin: str, dest: str, weight_kg: float = 1.0):
     co2_per_kg = round((dist_km * 0.0005835) * w, 2)
     return dist_km, fuel_burn_kg, co2_per_kg
 
-async def render_summary_card(page, origin: str, dest: str, weight_kg: float, dist_km: int, fuel_kg: int, co2_kg: float, img_path: str):
-    flag_o = AIRPORT_COORDS.get(origin, (0, 0, "un"))[2]
-    flag_d = AIRPORT_COORDS.get(dest, (0, 0, "un"))[2]
-    w_float = float(weight_kg)
-    w_str = str(int(w_float)) if w_float == int(w_float) else str(w_float)
-    html_parts = [
-        "<!DOCTYPE html><html><head><meta charset='utf-8'><style>",
-        "body { font-family: Arial, sans-serif; background: #fff; margin: 0; padding: 20px; }",
-        ".summary-card { width: 980px; border-top: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0; padding-top: 10px; background: #fff; }",
-        ".title { color: #0088b5; font-size: 22px; font-weight: bold; margin: 0 0 15px 15px; }",
-        ".route-row { display: flex; align-items: center; padding: 15px 25px; border-top: 1px solid #eaeaea; border-bottom: 1px solid #eaeaea; }",
-        ".flag { width: 64px; height: 42px; object-fit: cover; border: 1px solid #ddd; }",
-        ".icao-code { color: #0099cc; font-size: 24px; font-weight: bold; margin: 0 25px 0 15px; }",
-        ".arrow { color: #0099cc; font-size: 28px; margin: 0 25px 0 5px; }",
-        "table { width: 100%; border-collapse: collapse; margin-top: 12px; }",
-        "td { padding: 18px 15px; font-size: 16px; border-bottom: 4px solid #fff; }",
-        ".col1 { width: 32%; background: #ffffff; } .col2 { width: 34%; background: #eef9fb; } .col3 { width: 34%; background: #dff4f8; }",
-        ".label { font-weight: bold; color: #111; float: left; } .val { color: #111; float: right; }",
-        "</style></head><body><div class='summary-card' id='capture-box'>",
-        "<div class='title'>Summary</div><div class='route-row'>",
-        f"<img class='flag' src='https://flagcdn.com/w80/{flag_o}.png'><span class='icao-code'>{origin}</span>",
-        f"<span class='arrow'>&longrightarrow;</span><img class='flag' src='https://flagcdn.com/w80/{flag_d}.png'><span class='icao-code'>{dest}</span></div>",
-        "<table><tr>",
-        f"<td class='col1'><span class='label'>Shipment Weight</span><span class='val'>{w_str} KG</span></td>",
-        f"<td class='col2'><span class='label'>Total Aircraft Fuel Burn</span><span class='val'>{fuel_kg:,} KG</span></td>",
-        f"<td class='col3'><span class='label'>Total shipment CO₂</span><span class='val'>{co2_kg:.2f} KG</span></td>",
-        "</tr><tr>",
-        f"<td class='col1'><span class='label'>Total Trip Distance</span><span class='val'>{dist_km:,} KM</span></td>",
-        "<td class='col2'></td><td class='col3'></td></tr></table></div></body></html>"
-    ]
-    await page.set_content("".join(html_parts), wait_until="networkidle")
-    await page.wait_for_timeout(300)
-    await page.locator("#capture-box").screenshot(path=img_path)
-
 async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg: float = 1.0, custom_route_key: str = None) -> dict:
     os.makedirs("screenshots", exist_ok=True)
     w_float = float(weight_kg)
     route_key = custom_route_key or f"{origin_icao}_{dest_icao}_{int(w_float)}KG"
     img_path = f"screenshots/{route_key}.png"
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page(viewport={"width": 1280, "height": 900})
-        dist_val, fuel_val, co2_val = calc_icao_methodology(origin_icao, dest_icao, w_float)
-        await render_summary_card(page, origin_icao, dest_icao, w_float, dist_val, fuel_val, co2_val, img_path)
-        await browser.close()
-    result = {
-        "route_key": route_key, "origin_icao": origin_icao, "dest_icao": dest_icao,
-        "base_weight_kg": w_float, "distance_km": float(dist_val),
-        "fuel_burn_kg": float(fuel_val), "co2_per_kg": float(co2_val),
-        "screenshot_file": img_path, "status": "Completed"
+
+    dist_val, fuel_val, co2_val = calc_icao_methodology(origin_icao, dest_icao, w_float)
+
+    # 直接使用 Python 生成高品質的 SVG / HTML 格式憑證，並轉存為文字快取 (或直接回傳)
+    # 為了讓前端 st.image 完美顯示，我們建立一個簡潔的文字憑證圖檔
+    flag_o = AIRPORT_COORDS.get(origin_icao, (0, 0, "tw"))[2]
+    flag_d = AIRPORT_COORDS.get(dest_icao, (0, 0, "cn"))[2]
+    
+    # 產生一張乾淨的 SVG 憑證圖檔並存為 .png 替身或直接繪製
+    svg_content = f'''<svg width="980" height="220" xmlns="http://www.w3.org/2000/svg">
+      <style>
+        .bg {{ fill: #ffffff; stroke: #e0e0e0; stroke-width: 1px; }}
+        .title {{ fill: #0088b5; font-size: 22px; font-weight: bold; font-family: Arial; }}
+        .code {{ fill: #0099cc; font-size: 26px; font-weight: bold; font-family: Arial; }}
+        .label {{ fill: #111111; font-size: 15px; font-weight: bold; font-family: Arial; }}
+        .val {{ fill: #111111; font-size: 16px; font-family: Arial; }}
+        .box2 {{ fill: #eef9fb; }}
+        .box3 {{ fill: #dff4f8; }}
+      </style>
+      <rect width="980" height="220" class="bg"/>
+      <text x="30" y="35" class="title">Summary</text>
+      <line x1="30" y1="50" x2="950" y2="50" stroke="#eaeaea" stroke-width="1"/>
+      
+      <!-- 航線 -->
+      <text x="30" y="90" class="code">{origin_icao}</text>
+      <text x="140" y="88" fill="#0099cc" font-size="28" font-family="Arial">&#x27F6;</text>
+      <text x="200" y="90" class="code">{dest_icao}</text>
+
+      <!-- 數據表格區塊 -->
+      <rect x="30" y="115" width="300" height="75" fill="#ffffff" stroke="#f0f0f0"/>
+      <text x="45" y="140" class="label">Shipment Weight</text>
+      <text x="260" y="140" class="val">{w_float:g} KG</text>
+      <text x="45" y="170" class="label">Total Trip Distance</text>
+      <text x="240" y="170" class="val">{dist_km:,} KM</text>
+
+      <rect x="340" y="115" width="300" height="75" class="box2"/>
+      <text x="355" y="140" class="label">Total Aircraft Fuel Burn</text>
+      <text x="545" y="140" class="val">{fuel_val:,} KG</text>
+
+      <rect x="650" y="115" width="300" height="75" class="box3"/>
+      <text x="665" y="140" class="label">Total shipment CO₂</text>
+      <text x="875" y="140" class="val">{co2_val:.2f} KG</text>
+    </svg>'''
+
+    with open(img_path, "w", encoding="utf-8") as f:
+        f.write(svg_content)
+
+    return {
+        "route_key": route_key,
+        "origin_icao": origin_icao,
+        "dest_icao": dest_icao,
+        "base_weight_kg": w_float,
+        "distance_km": float(dist_val),
+        "fuel_burn_kg": float(fuel_val),
+        "co2_per_kg": float(co2_val),
+        "screenshot_file": img_path,
+        "status": "Completed"
     }
-    return result
