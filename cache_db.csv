@@ -1,0 +1,17 @@
+route_key,origin_icao,dest_icao,base_weight_kg,distance_km,fuel_burn_kg,co2_per_kg,screenshot_file,status
+RCTP_WMKK_1KG,RCTP,WMKK,1,3239,26536,1.89,screenshots/RCTP_WMKK_1KG.png,Completed
+ZSPD_RCTP_1KG,ZSPD,RCTP,1,0,0,0,screenshots/ZSPD_RCTP_1KG.png,Pending
+ZSPD_VVNB_1KG,ZSPD,VVNB,1,0,0,0,screenshots/ZSPD_VVNB_1KG.png,Pending
+ZSPD_WMKK_1KG,ZSPD,WMKK,1,0,0,0,screenshots/ZSPD_WMKK_1KG.png,Pending
+RCTP_VTBS_1KG,RCTP,VTBS,1,0,0,0,screenshots/RCTP_VTBS_1KG.png,Pending
+ZSPD_VVTS_1KG,ZSPD,VVTS,1,0,0,0,screenshots/ZSPD_VVTS_1KG.png,Pending
+ZSPD_RJOO_1KG,ZSPD,RJOO,1,0,0,0,screenshots/ZSPD_RJOO_1KG.png,Pending
+ZSSS_ZGSZ_1KG,ZSSS,ZGSZ,1,0,0,0,screenshots/ZSSS_ZGSZ_1KG.png,Pending
+ZSPD_RJAA_1KG,ZSPD,RJAA,1,0,0,0,screenshots/ZSPD_RJAA_1KG.png,Pending
+ZSPD_WIDD_1KG,ZSPD,WIDD,1,0,0,0,screenshots/ZSPD_WIDD_1KG.png,Pending
+ZSPD_VTBS_1KG,ZSPD,VTBS,1,0,0,0,screenshots/ZSPD_VTBS_1KG.png,Pending
+ZSPD_VHHH_1KG,ZSPD,VHHH,1,0,0,0,screenshots/ZSPD_VHHH_1KG.png,Pending
+ZSPD_LIPE_1KG,ZSPD,LIPE,1,0,0,0,screenshots/ZSPD_LIPE_1KG.png,Pending
+ZSPD_LZIB_1KG,ZSPD,LZIB,1,0,0,0,screenshots/ZSPD_LZIB_1KG.png,Pending
+ZSPD_LKPR_1KG,ZSPD,LKPR,1,0,0,0,screenshots/ZSPD_LKPR_1KG.png,Pending
+ZSPD_WSSS_1KG,ZSPD,WSSS,1,0,0,0,screenshots/ZSPD_WSSS_1KG.png,Pending
