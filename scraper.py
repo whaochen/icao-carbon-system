@@ -1,5 +1,6 @@
 import os
 import math
+from PIL import Image, ImageDraw, ImageFont
 
 AIRPORT_COORDS = {
     "RCTP": (25.0777, 121.2328, "tw"),
@@ -47,11 +48,45 @@ async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg:
 
     dist_km, fuel_val, co2_val = calc_icao_methodology(origin_icao, dest_icao, w_float)
 
-    # 為了避開 PIL 無法讀取 SVG 的問題，我們直接使用 streamlit 內建的 st.markdown 渲染 HTML 樣式憑證，
-    # 同時在本地用一張空白的 1x1 像素有效 PNG 佔位，確保批次下載 ZIP 時不會報錯。
-    from PIL import Image
-    img = Image.new('RGB', (980, 220), color=(255, 255, 255))
-    img.save(img_path, 'PNG')
+    # 使用 Pillow 繪製一張清晰漂亮的 Summary 憑證圖片
+    img = Image.new('RGB', (980, 240), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    
+    # 嘗試載入系統字體，若無則使用預設
+    try:
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 22)
+        font_code = ImageFont.truetype("DejaVuSans-Bold.ttf", 26)
+        font_label = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
+        font_val = ImageFont.truetype("DejaVuSans.ttf", 18)
+    except:
+        font_title = font_code = font_label = font_val = ImageFont.load_default()
+
+    # 繪製外框與標題
+    draw.rectangle([0, 0, 979, 239], outline="#e0e0e0", width=1)
+    draw.text((30, 20), "Summary", fill="#0088b5", font=font_title)
+    draw.line([30, 55, 950, 55], fill="#eaeaea", width=1)
+
+    # 航線起訖代碼
+    draw.text((30, 75), origin_icao, fill="#0099cc", font=font_code)
+    draw.text((140, 75), "➔", fill="#0099cc", font=font_code)
+    draw.text((190, 75), dest_icao, fill="#0099cc", font=font_code)
+
+    # 三個數據方塊底色
+    draw.rectangle([30, 130, 320, 205], fill="#ffffff", outline="#f0f0f0")
+    draw.rectangle([335, 130, 625, 205], fill="#eef9fb")
+    draw.rectangle([640, 130, 930, 205], fill="#dff4f8")
+
+    # 欄位文字
+    draw.text((45, 142), "Shipment Weight", fill="#111111", font=font_label)
+    draw.text((45, 172), f"{w_float:g} KG", fill="#111111", font=font_val)
+
+    draw.text((350, 142), "Total Aircraft Fuel Burn", fill="#111111", font=font_label)
+    draw.text((350, 172), f"{fuel_val:,} KG", fill="#111111", font=font_val)
+
+    draw.text((655, 142), "Total shipment CO₂", fill="#111111", font=font_label)
+    draw.text((655, 172), f"{co2_val:.2f} KG", fill="#111111", font=font_val)
+
+    img.save(img_path, "PNG")
 
     return {
         "route_key": route_key,
