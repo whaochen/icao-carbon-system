@@ -9,7 +9,7 @@ st.set_page_config(page_title="ICAO 航空碳排與距離智慧助理", layout="
 st.title("✈️ ICAO 航空碳排計算與官方截圖智慧系統")
 st.markdown("---")
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def load_databases():
     dict_df = pd.read_csv("airports_dict.csv")
     cache_df = pd.read_csv("cache_db.csv")
@@ -17,7 +17,7 @@ def load_databases():
 
 dict_df, cache_df = load_databases()
 
-# 機場名稱字典映射 (用來顯示中文名稱)
+# 建立 ICAO 轉中文機場名稱對照表
 icao_to_name = dict(zip(dict_df['icao'], dict_df['airport_name']))
 
 def translate_to_icao(raw_text: str, dict_df: pd.DataFrame) -> str:
@@ -42,7 +42,9 @@ def translate_to_icao(raw_text: str, dict_df: pd.DataFrame) -> str:
 with st.sidebar:
     st.header("📊 已就緒航線快取庫 (16條)")
     st.metric("在庫航線數", f"{len(cache_df)} 條")
-    st.dataframe(cache_df[['route_key', 'distance_km', 'co2_per_kg', 'note']], hide_index=True)
+    # 自動檢查有什麼欄位就顯示什麼欄位，絕不報 KeyError
+    display_cols = [c for c in ['route_key', 'distance_km', 'co2_per_kg', 'status'] if c in cache_df.columns]
+    st.dataframe(cache_df[display_cols], hide_index=True)
 
 tab_single, tab_batch = st.tabs(["🔍 模式 1：從已就緒 16 條航線快速查詢與預覽截圖", "📦 模式 2：批次 ERP 檔案上傳與打包下載"])
 
@@ -50,13 +52,13 @@ tab_single, tab_batch = st.tabs(["🔍 模式 1：從已就緒 16 條航線快�
 with tab_single:
     st.subheader("🔍 直接檢視已就緒之 16 條航線數據與官方截圖")
     
-    # 建立好讀的下拉選單：例如 "RCTP -> VTBS | 台灣桃園->泰國曼谷(22筆)"
     route_options = {}
     for _, row in cache_df.iterrows():
-        r_key = row['route_key']
-        orig, dest = row['origin_icao'], row['dest_icao']
-        note = row.get('note', '')
-        label = f"{orig} ➔ {dest} ｜ {note} (1KG 碳排: {row['co2_per_kg']} KG / 距離: {row['distance_km']} KM)"
+        r_key = str(row['route_key'])
+        orig, dest = str(row['origin_icao']), str(row['dest_icao'])
+        orig_name = icao_to_name.get(orig, orig)
+        dest_name = icao_to_name.get(dest, dest)
+        label = f"{orig} ➔ {dest} ｜ {orig_name} 飛往 {dest_name} (1KG碳排: {row['co2_per_kg']} KG / 距離: {row['distance_km']} KM)"
         route_options[label] = row
 
     c1, c2 = st.columns([3, 1])
@@ -64,9 +66,7 @@ with tab_single:
     weight_input = c2.number_input("試算出貨重量 (KG)", min_value=1.0, value=1.0, step=10.0)
 
     selected_row = route_options[selected_label]
-    r_key = selected_row['route_key']
-    orig_code = selected_row['origin_icao']
-    dest_code = selected_row['dest_icao']
+    r_key = str(selected_row['route_key'])
     dist_km = float(selected_row['distance_km'])
     fuel_kg = float(selected_row['fuel_burn_kg'])
     co2_1kg = float(selected_row['co2_per_kg'])
@@ -79,19 +79,19 @@ with tab_single:
     m3.metric("單位碳排 (1 KG)", f"{co2_1kg:.2f} KG")
     m4.metric(f"試算總碳排 ({weight_input:g} KG)", f"{(co2_1kg * weight_input):,.2f} KG")
 
-    st.markdown("#### 🖼️ 倉庫內對應之佐證截圖 (`" + img_path + "`)")
+    st.markdown(f"#### 🖼️ 倉庫內對應之官方佐證截圖 (`{img_path}`)")
     if os.path.exists(img_path):
-        st.image(img_path, caption=f"佐證截圖檔名：{r_key}.png", use_container_width=True)
+        st.image(img_path, caption=f"官方佐證截圖：{r_key}.png", use_container_width=True)
         with open(img_path, "rb") as file:
             st.download_button(
-                label=f"📥 單獨下載此張截圖 ({r_key}.png)",
+                label=f"📥 下載此張官方憑證截圖 ({r_key}.png)",
                 data=file,
                 file_name=f"{r_key}.png",
                 mime="image/png",
                 type="primary"
             )
     else:
-        st.warning(f"⚠️ 找不到 `{img_path}` 檔案，請確認該圖檔已上傳至 GitHub 的 `screenshots/` 資料夾中。")
+        st.warning(f"⚠️ 找不到 `{img_path}` 檔案。")
 
 # ==================== 模式 2：批次 ERP 上傳 ====================
 with tab_batch:
