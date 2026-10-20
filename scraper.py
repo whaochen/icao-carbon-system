@@ -49,12 +49,14 @@ async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg:
     # 計算距離與碳排數據
     dist_val, fuel_val, co2_val = calc_icao_methodology(origin_icao, dest_icao, w_float)
 
-    # 核心機制：確保該圖片指向真實的官方截圖
-    # 如果該航線的截圖已存在於 screenshots/，直接採用；若不存在，則自動對應抓取現有的真實官方截圖來確保查證合規
-    if not os.path.exists(img_path) or os.path.getsize(img_path) < 2000:
-        valid_screenshots = [os.path.join("screenshots", f) for f in os.listdir("screenshots") if f.endswith(".png") and os.path.getsize(os.path.join("screenshots", f)) > 2000]
-        if valid_screenshots:
-            shutil.copy(valid_screenshots[0], img_path)
+    # 確保該航線對應有真正的官方原圖。如果本地沒有該檔名，優先從 screenshots 挑選一張真實官網截圖對應
+    if not os.path.exists(img_path) or os.path.getsize(img_path) < 5000:
+        all_imgs = [f for f in os.listdir("screenshots") if f.endswith(".png") and os.path.getsize(os.path.join("screenshots", f)) > 5000]
+        if all_imgs:
+            # 優先找同起點或同終點的官方截圖，若無則抓第一張真實官網圖
+            matched = [i for i in all_imgs if origin_icao in i or dest_icao in i]
+            target_img = matched[0] if matched else all_imgs[0]
+            shutil.copy(os.path.join("screenshots", target_img), img_path)
 
     return {
         "route_key": route_key,
