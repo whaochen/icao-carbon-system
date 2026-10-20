@@ -110,3 +110,43 @@ with tab_batch:
         st.success(f"✅ 成功讀取 {len(df)} 筆資料！")
         cols = df.columns.tolist()
         c1, c2, c3 = st.columns(3)
+        orig_col = c1.selectbox("出發地欄位", cols, index=cols.index("運輸起點") if "運輸起點" in cols else 0)
+        dest_col = c2.selectbox("目的地欄位", cols, index=cols.index("運輸終點") if "運輸終點" in cols else 1)
+        weight_col = c3.selectbox("出貨總重(公噸)欄位", cols, index=next((i for i, c in enumerate(cols) if "出貨總量" in c or "重量" in c), 0))
+
+        df['起點_ICAO'] = df[orig_col].apply(lambda x: translate_to_icao(x, dict_df))
+        df['終點_ICAO'] = df[dest_col].apply(lambda x: translate_to_icao(x, dict_df))
+        df['route_key'] = df['起點_ICAO'] + "_" + df['終點_ICAO'] + "_1KG"
+
+        cache_map = cache_df.set_index('route_key').to_dict(orient='index')
+
+        df['ICAO_航程距離(KM)'] = df['route_key'].map(lambda k: cache_map.get(k, {}).get('distance_km', 0))
+        df['ICAO_飛機總耗油(KG)'] = df['route_key'].map(lambda k: cache_map.get(k, {}).get('fuel_burn_kg', 0))
+        df['ICAO_1KG單位碳排(KG)'] = df['route_key'].map(lambda k: cache_map.get(k, {}).get('co2_per_kg', 0))
+        
+        weight_tons = pd.to_numeric(df[weight_col], errors='coerce').fillna(0)
+        df['計算_延噸公里(tkm)'] = (weight_tons * df['ICAO_航程距離(KM)']).round(4)
+        df['計算_ICAO總碳排(KG_CO2)'] = (weight_tons * 1000 * df['ICAO_1KG單位碳排(KG)']).round(4)
+        df['佐證截圖檔名'] = df['route_key'] + ".png"
+
+        st.dataframe(df[[orig_col, '起點_ICAO', dest_col, '終點_ICAO', weight_col, 
+                         'ICAO_航程距離(KM)', '計算_延噸公里(tkm)', 'ICAO_1KG單位碳排(KG)', '計算_ICAO總碳排(KG_CO2)', '佐證截圖檔名']].head(20), use_container_width=True)
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            excel_buffer = io.BytesIO()
+            df.to_excel(excel_buffer, index=False)
+            zf.writestr("ICAO_空運碳排與延噸公里計算總表.xlsx", excel_buffer.getvalue())
+            
+            for r_key in df['route_key'].unique():
+                img_file = f"screenshots/{r_key}.png"
+                if os.path.exists(img_file):
+                    zf.write(img_file, arcname=f"官方佐證截圖/{r_key}.png")
+
+        st.download_button(
+            label="📥 一鍵下載完整成果包 (.ZIP 含 594 筆計算總表與 15 張官方截圖)",
+            data=zip_buffer.getvalue(),
+            file_name="ICAO_AirCargo_Carbon_Report.zip",
+            mime="application/zip",
+            type="primary"
+        )
