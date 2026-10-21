@@ -4,7 +4,6 @@ import math
 import urllib.request
 from PIL import Image, ImageDraw, ImageFont
 
-# 機場座標與對應的 ISO 國家國旗代碼
 AIRPORT_COORDS = {
     "RCTP": (25.0777, 121.2328, "tw"),
     "RCSS": (25.0694, 121.5525, "tw"),
@@ -62,15 +61,15 @@ def calc_icao_methodology(origin: str, dest: str, weight_kg: float = 1.0):
 
 def _fetch_flag(country_code: str):
     try:
-        url = f"https://flagcdn.com/w80/{country_code.lower()}.png"
+        url = f"https://flagcdn.com/w160/{country_code.lower()}.png"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = resp.read()
         img = Image.open(io.BytesIO(data)).convert("RGBA")
-        return img.resize((36, 24), Image.Resampling.LANCZOS)
+        # 放大國旗尺寸為 64x43，與 ZSPD_VHHH_1KG.png 視覺比例完全一致
+        return img.resize((64, 43), Image.Resampling.LANCZOS)
     except Exception:
-        fallback = Image.new("RGBA", (36, 24), (200, 200, 200, 255))
-        return fallback
+        return Image.new("RGBA", (64, 43), (220, 50, 50, 255))
 
 def _load_font(size: int, bold: bool = False):
     font_candidates = [
@@ -88,72 +87,82 @@ def _load_font(size: int, bold: bool = False):
 
 def generate_official_style_screenshot(origin_icao: str, dest_icao: str, weight_kg: float, dist_km: float, fuel_kg: float, co2_kg: float, save_path: str):
     """
-    100% 穩定產出與那 16 張完全一致、帶有真實各國國旗、飛機圖標、Total Trip Distance 與官方藍底卡片的高解析度截圖
+    100% 依照 ZSPD_VHHH_1KG.png 原圖比例繪製：
+    緊湊畫布 (950x275)、大國旗 (64x43)、大號粗體字、藍色右箭頭、雙列三欄緊湊表格
     """
-    width, height = 1400, 420
+    width, height = 950, 275
     img = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    # 外框與分隔線
-    draw.rounded_rectangle([15, 15, width - 15, height - 15], radius=8, outline=(225, 225, 225), width=2)
-    
+    teal_color = (0, 124, 146)
+    line_color = (230, 230, 230)
+
     font_title = _load_font(22, bold=True)
-    font_code = _load_font(22, bold=True)
-    font_dist_lbl = _load_font(20, bold=False)
-    font_dist_val = _load_font(21, bold=True)
-    font_card_lbl = _load_font(19, bold=False)
-    font_card_val = _load_font(22, bold=True)
+    font_icao = _load_font(22, bold=True)
+    font_lbl = _load_font(15, bold=True)
+    font_val = _load_font(16, bold=False)
 
-    # 1. Summary 標題
-    teal_color = (0, 118, 128)
-    draw.text((50, 42), "Summary", fill=teal_color, font=font_title)
-    draw.line([(50, 82), (width - 50, 82)], fill=(228, 228, 228), width=2)
+    # 頂部細線與 Summary 標題
+    draw.line([(15, 8), (width - 15, 8)], fill=line_color, width=1)
+    draw.text((28, 18), "Summary", fill=teal_color, font=font_title)
+    draw.line([(15, 52), (width - 15, 52)], fill=line_color, width=1)
 
-    # 2. 國旗與航線列
+    # 大國旗與航線列
     _, _, c1 = AIRPORT_COORDS.get(origin_icao, (0, 0, "tw"))
     _, _, c2 = AIRPORT_COORDS.get(dest_icao, (0, 0, "cn"))
     flag1 = _fetch_flag(c1)
     flag2 = _fetch_flag(c2)
 
-    img.paste(flag1, (50, 112), flag1)
-    draw.text((100, 112), origin_icao, fill=teal_color, font=font_code)
+    img.paste(flag1, (35, 68), flag1)
+    draw.rectangle([35, 68, 35 + 64, 68 + 43], outline=(210, 210, 210), width=1)
+    draw.text((112, 77), origin_icao, fill=teal_color, font=font_icao)
 
-    # 繪製精緻飛機向量圖示 (取代亂碼方框)
-    px, py = 215, 124
-    draw.polygon([(px-12, py-2), (px+10, py-2), (px+15, py), (px+10, py+2), (px-12, py+2)], fill=teal_color)
-    draw.polygon([(px-2, py-2), (px-6, py-11), (px-2, py-11), (px+4, py-2)], fill=teal_color)
-    draw.polygon([(px-2, py+2), (px-6, py+11), (px-2, py+11), (px+4, py+2)], fill=teal_color)
-    draw.polygon([(px-10, py-2), (px-14, py-7), (px-11, py-7), (px-8, py-2)], fill=teal_color)
+    # 繪製與原圖一致的藍色右箭頭 (→)
+    ax1, ax2, ay = 198, 232, 90
+    draw.line([(ax1, ay), (ax2, ay)], fill=teal_color, width=2)
+    draw.line([(ax2 - 7, ay - 6), (ax2, ay)], fill=teal_color, width=2)
+    draw.line([(ax2 - 7, ay + 6), (ax2, ay)], fill=teal_color, width=2)
 
-    img.paste(flag2, (265, 112), flag2)
-    draw.text((315, 112), dest_icao, fill=teal_color, font=font_code)
+    img.paste(flag2, (255, 68), flag2)
+    draw.rectangle([255, 68, 255 + 64, 68 + 43], outline=(210, 210, 210), width=1)
+    draw.text((332, 77), dest_icao, fill=teal_color, font=font_icao)
 
-    # 右側 Total Trip Distance
-    dist_str = f"{int(dist_km):,} KM"
-    draw.text((width - 360, 112), "Total Trip Distance:", fill=(50, 50, 50), font=font_dist_lbl)
-    draw.text((width - 170, 112), dist_str, fill=(20, 20, 20), font=font_dist_val)
+    draw.line([(15, 128), (width - 15, 128)], fill=line_color, width=1)
 
-    draw.line([(50, 162), (width - 50, 162)], fill=(228, 228, 228), width=2)
+    # 下方雙列三欄緊湊表格 (與 ZSPD_VHHH_1KG.png 100% 相同結構)
+    col1_x, col2_x, col3_x, end_x = 15, 315, 635, width - 15
+    row1_y, row2_y, bot_y = 138, 198, 256
 
-    # 3. 下方三個資訊卡片
+    # 背景色塊：中欄淺藍、右欄湖水藍
+    draw.rectangle([col2_x, row1_y, col3_x - 2, row2_y - 2], fill=(238, 249, 251))
+    draw.rectangle([col2_x, row2_y, col3_x - 2, bot_y], fill=(238, 249, 251))
+    draw.rectangle([col3_x, row1_y, end_x, row2_y - 2], fill=(224, 243, 248))
+    draw.rectangle([col3_x, row2_y, end_x, bot_y], fill=(224, 243, 248))
+
     w_disp = f"{int(weight_kg) if float(weight_kg).is_integer() else weight_kg} KG"
+    dist_disp = f"{int(dist_km):,} KM"
     fuel_disp = f"{int(fuel_kg):,} KG"
     co2_disp = f"{co2_kg:.2f} KG"
 
-    # Card 1: Shipment Weight (白底)
-    draw.rounded_rectangle([50, 195, 460, 355], radius=4, fill=(255, 255, 255), outline=(232, 232, 232), width=2)
-    draw.text((75, 225), "Shipment Weight", fill=(40, 40, 40), font=font_card_lbl)
-    draw.text((75, 290), w_disp, fill=(20, 20, 20), font=font_card_val)
+    # 第一列：Shipment Weight | Total Aircraft Fuel Burn | Total shipment CO2
+    draw.text((28, 158), "Shipment Weight", fill=(25, 25, 25), font=font_lbl)
+    draw.text((250, 158), w_disp, fill=(35, 35, 35), font=font_val)
 
-    # Card 2: Total Aircraft Fuel Burn (淺藍底)
-    draw.rounded_rectangle([490, 195, 900, 355], radius=4, fill=(237, 248, 250), outline=(216, 240, 245), width=2)
-    draw.text((515, 225), "Total Aircraft Fuel Burn", fill=(40, 40, 40), font=font_card_lbl)
-    draw.text((515, 290), fuel_disp, fill=(20, 20, 20), font=font_card_val)
+    draw.text((col2_x + 15, 158), "Total Aircraft Fuel Burn", fill=(25, 25, 25), font=font_lbl)
+    draw.text((col3_x - 95, 158), fuel_disp, fill=(35, 35, 35), font=font_val)
 
-    # Card 3: Total shipment CO2 (湖水藍底)
-    draw.rounded_rectangle([930, 195, 1350, 355], radius=4, fill=(217, 240, 246), outline=(196, 231, 240), width=2)
-    draw.text((955, 225), "Total shipment CO2", fill=(40, 40, 40), font=font_card_lbl)
-    draw.text((955, 290), co2_disp, fill=(20, 20, 20), font=font_card_val)
+    draw.text((col3_x + 15, 158), "Total shipment CO₂", fill=(25, 25, 25), font=font_lbl)
+    draw.text((end_x - 78, 158), co2_disp, fill=(35, 35, 35), font=font_val)
+
+    # 中間白色橫隔線
+    draw.line([(col1_x, row2_y - 1), (end_x, row2_y - 1)], fill=(242, 242, 242), width=2)
+
+    # 第二列：Total Trip Distance
+    draw.text((28, 218), "Total Trip Distance", fill=(25, 25, 25), font=font_lbl)
+    draw.text((225, 218), dist_disp, fill=(35, 35, 35), font=font_val)
+
+    # 底部細邊線
+    draw.line([(15, 266), (width - 15, 266)], fill=line_color, width=1)
 
     img.save(save_path, format="PNG", compress_level=1)
 
@@ -166,9 +175,8 @@ async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg:
     dist_val, fuel_val, co2_val = calc_icao_methodology(origin_icao, dest_icao, w_float)
     distance_km, fuel_burn_kg, co2_per_kg = float(dist_val), float(fuel_val), float(co2_val)
 
-    # 如果還沒有這張圖，或者圖檔是舊的殘缺圖 (<12KB)，立即產出帶有真實國旗的官方格式截圖
-    if not os.path.exists(img_path) or os.path.getsize(img_path) < 12000:
-        generate_official_style_screenshot(origin_icao, dest_icao, w_float, distance_km, fuel_burn_kg, co2_per_kg, img_path)
+    # 重新產出大國旗緊湊版截圖
+    generate_official_style_screenshot(origin_icao, dest_icao, w_float, distance_km, fuel_burn_kg, co2_per_kg, img_path)
 
     return {
         "route_key": route_key,
