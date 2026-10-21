@@ -1,9 +1,10 @@
 import os
 import asyncio
 import pandas as pd
-from scraper import query_icao_and_screenshot
+from scraper import query_icao_and_screenshot, calc_icao_methodology
 
-MAX_ROUTES_PER_RUN = 5
+# 設為 60，確保一次執行就能把所有「數值不一致的舊航線」與「缺少的反向航線」全部重刷完畢
+MAX_ROUTES_PER_RUN = 60
 HUB_ORIGINS = ["RCTP", "ZSPD", "ZSSS", "VHHH", "ZGSZ"]
 
 async def main():
@@ -15,22 +16,41 @@ async def main():
     tasks_to_run = []
     existing_keys = set(cache_df['route_key'].astype(str).tolist())
 
-    # 1. 檢查現有資料庫：是否有缺圖或未完成的航線
+    # 優先任務 1：強制校準檢查！比對現有快取與最新官方數據，若距離或碳排不一致（如 777 KM vs 674 KM），強制重刷覆蓋！
     for idx, row in cache_df.iterrows():
         r_key = str(row['route_key'])
-        orig = str(row['origin_icao'])
-        dest = str(row['dest_icao'])
+        orig = str(row['origin_icao']).strip().upper()
+        dest = str(row['dest_icao']).strip().upper()
         img_path = f"screenshots/{r_key}.png"
-        has_valid_img = os.path.exists(img_path) and os.path.getsize(img_path) > 10000
+        has_valid_img = os.path.exists(img_path) and os.path.getsize(img_path) > 5000
 
-        if row.get('status') != 'Completed' or not has_valid_img:
-            tasks_to_run.append((orig, dest, r_key))
-            # 同時確保反向航線也被加入
-            rev_key = f"{dest}_{orig}_1KG"
-            if rev_key not in existing_keys:
+        # 取得最新官方標準數值
+        expected = calc_icao_methodology(orig, dest, 1.0)
+        curr_dist = int(round(float(row.get('distance_km', 0))))
+        curr_fuel = int(round(float(row.get('fuel_burn_kg', 0))))
+
+        # 只要狀態未完成、缺圖、或是快取內的舊數字跟官方標準不同，一律強制重跑！
+        if (row.get('status') != 'Completed' or 
+            not has_valid_img or 
+            curr_dist != expected['distance_km'] or 
+            curr_fuel != expected['fuel_burn_kg']):
+            if (orig, dest, r_key) not in tasks_to_run:
+                tasks_to_run.append((orig, dest, r_key))
+
+    # 優先任務 2：全面掃描現有航線，找出所有「缺少反向回程」的項目，排入優先佇列
+    existing_rows = cache_df.to_dict(orient='records')
+    for row in existing_rows:
+        orig = str(row['origin_icao']).strip().upper()
+        dest = str(row['dest_icao']).strip().upper()
+        rev_key = f"{dest}_{orig}_1KG"
+        rev_img_path = f"screenshots/{rev_key}.png"
+        has_valid_rev = os.path.exists(rev_img_path) and os.path.getsize(rev_img_path) > 5000
+
+        if rev_key not in existing_keys or not has_valid_rev:
+            if (dest, orig, rev_key) not in tasks_to_run:
                 tasks_to_run.append((dest, orig, rev_key))
 
-    # 2. 自動探索新航線：每次自動擴充時，同時建立「正向與反向」雙向截圖
+    # 優先任務 3：若還有名額，自動從主要樞紐雙向擴充新航線
     if len(tasks_to_run) < MAX_ROUTES_PER_RUN:
         for hub in HUB_ORIGINS:
             for dest in all_icaos:
@@ -38,10 +58,8 @@ async def main():
                     fwd_key = f"{hub}_{dest}_1KG"
                     rev_key = f"{dest}_{hub}_1KG"
                     
-                    # 檢查正向
                     if fwd_key not in existing_keys and (hub, dest, fwd_key) not in tasks_to_run:
                         tasks_to_run.append((hub, dest, fwd_key))
-                    # 檢查反向（雙向同步建檔）
                     if rev_key not in existing_keys and (dest, hub, rev_key) not in tasks_to_run:
                         tasks_to_run.append((dest, hub, rev_key))
 
@@ -51,10 +69,10 @@ async def main():
                 break
 
     tasks_to_run = tasks_to_run[:MAX_ROUTES_PER_RUN]
-    print(f"🚀 本次排程預計自動抓取雙向航線截圖: {[t[2] for t in tasks_to_run]}")
+    print(f"🚀 本次排程預計強制校準與雙向補齊共 {len(tasks_to_run)} 條航線: {[t[2] for t in tasks_to_run]}")
 
     for orig, dest, r_key in tasks_to_run:
-        print(f"⏳ 正在產出官方憑證截圖: {orig} -> {dest} ({r_key})...")
+        print(f"⏳ 正在產出官方憑證截圖與校準數據: {orig} -> {dest} ({r_key})...")
         res = await query_icao_and_screenshot(orig, dest, 1.0, r_key)
         
         if r_key in cache_df['route_key'].values:
@@ -70,7 +88,7 @@ async def main():
             cache_df = pd.concat([cache_df, new_row], ignore_index=True)
 
         cache_df.to_csv("cache_db.csv", index=False)
-        print(f"✅ {r_key} 雙向對稱建檔完成！")
+        print(f"✅ {r_key} 數據與截圖更新完成！ ({res['distance_km']} KM / {res['fuel_burn_kg']} KG / {res['co2_per_kg']} KG)")
 
 if __name__ == "__main__":
     asyncio.run(main())
