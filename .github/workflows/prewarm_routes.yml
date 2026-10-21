@@ -2,32 +2,38 @@ name: Auto Pre-warm ICAO Routes & Screenshots
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # 每 6 小時執行一次 (台灣時間 02:00, 08:00, 14:00, 20:00)
-  workflow_dispatch: # 允許手動點擊 Run workflow 觸發
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  scrape-and-commit:
+  prewarm:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install dependencies & Playwright Chromium
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install playwright pandas requests pillow
+          playwright install chromium
+          playwright install-deps chromium
 
-      - name: Run pre-warm worker
+      - name: Run Pre-warm Worker
         run: python prewarm_worker.py
 
-      - name: Commit and push changes if any
+      - name: Commit and Push updated cache and screenshots
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.io"
-          git add screenshots/ cache_db.csv
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update ICAO cache data and screenshots" && git push)
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions Bot"
+          git add cache_db.csv screenshots/
+          git diff --staged --quiet || git commit -m "Auto-update real ICAO data and official screenshots"
+          git push
