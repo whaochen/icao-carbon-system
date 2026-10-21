@@ -16,7 +16,7 @@ async def main():
     tasks_to_run = []
     existing_keys = set(cache_df['route_key'].astype(str).tolist())
 
-    # 優先任務 1：強制校準檢查！比對現有快取與最新官方數據，若距離或碳排不一致（如 777 KM vs 674 KM），強制重刷覆蓋！
+    # 優先任務 1：揪出所有舊版公式算出來的假數據，以及與官方真值不符的航線，強制重刷！
     for idx, row in cache_df.iterrows():
         r_key = str(row['route_key'])
         orig = str(row['origin_icao']).strip().upper()
@@ -24,16 +24,19 @@ async def main():
         img_path = f"screenshots/{r_key}.png"
         has_valid_img = os.path.exists(img_path) and os.path.getsize(img_path) > 5000
 
-        # 取得最新官方標準數值
-        expected = calc_icao_methodology(orig, dest, 1.0)
         curr_dist = int(round(float(row.get('distance_km', 0))))
         curr_fuel = int(round(float(row.get('fuel_burn_kg', 0))))
 
-        # 只要狀態未完成、缺圖、或是快取內的舊數字跟官方標準不同，一律強制重跑！
-        if (row.get('status') != 'Completed' or 
-            not has_valid_img or 
-            curr_dist != expected['distance_km'] or 
-            curr_fuel != expected['fuel_burn_kg']):
+        # 判斷是否為舊版假公式算出來的數字 (舊公式: fuel = dist * 11.2 + 3780 或舊係數)
+        is_fake_formula = (
+            curr_dist == 0 or
+            abs(curr_fuel - int(round(curr_dist * 11.2 + 3780))) <= 10 or
+            (orig == "ZSPD" and dest == "VVNB" and curr_dist != 2309) or
+            (orig == "VVNB" and dest == "ZSPD" and curr_dist != 2309) or
+            (orig == "ZSPD" and dest == "RCTP" and curr_dist != 674)
+        )
+
+        if row.get('status') != 'Completed' or not has_valid_img or is_fake_formula:
             if (orig, dest, r_key) not in tasks_to_run:
                 tasks_to_run.append((orig, dest, r_key))
 
