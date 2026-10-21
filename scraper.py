@@ -2,6 +2,19 @@ import os
 import math
 from PIL import Image, ImageDraw, ImageFont
 
+def generate_official_style_screenshot(origin, dest, distance_km, fuel_burn_kg, co2_per_kg, output_path):
+    # 建立高品質官方憑證畫布與樣式
+    img_width, img_height = 1000, 500
+    image = Image.new("RGB", (img_width, img_height), color=(255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    
+    # 繪製藍色官方標題與表格外框
+    draw.rectangle([0, 0, img_width, 80], fill=(0, 102, 204))
+    
+    # 儲存圖片
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    image.save(output_path)
+
 def calc_icao_methodology(origin, dest, weight_kg=1.0):
     # 簡易大圓距離與碳排計算模型 (或對接真實官方數據)
     # 預設範例數值
