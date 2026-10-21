@@ -2,7 +2,7 @@ import os
 import math
 from PIL import Image, ImageDraw, ImageFont
 
-def generate_official_style_screenshot(origin, dest, distance_km, fuel_burn_kg, co2_per_kg, output_path):
+def generate_official_style_screenshot(origin, dest, weight_kg, distance_km, fuel_burn_kg, co2_per_kg, output_path):
     # 建立高品質官方憑證畫布與樣式
     img_width, img_height = 1000, 500
     image = Image.new("RGB", (img_width, img_height), color=(255, 255, 255))
