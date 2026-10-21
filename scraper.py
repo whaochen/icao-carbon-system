@@ -1,5 +1,4 @@
 import os
-import re
 import math
 import asyncio
 
@@ -42,10 +41,6 @@ def calc_icao_methodology(origin: str, dest: str, weight_kg: float = 1.0):
     return dist_km, fuel_burn_kg, co2_per_kg
 
 async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg: float = 1.0, custom_route_key: str = None) -> dict:
-    """
-    此函式供 GitHub Actions 背景機器人 (prewarm_worker.py) 執行真實的 ICAO 官網截圖。
-    在 Streamlit 網頁端若無該圖檔，絕不產生假圖或複製其他航線圖檔！
-    """
     os.makedirs("screenshots", exist_ok=True)
     w_float = float(weight_kg)
     route_key = custom_route_key or f"{origin_icao}_{dest_icao}_{int(w_float)}KG"
@@ -54,7 +49,7 @@ async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg:
     dist_val, fuel_val, co2_val = calc_icao_methodology(origin_icao, dest_icao, w_float)
     distance_km, fuel_burn_kg, co2_per_kg = float(dist_val), float(fuel_val), float(co2_val)
 
-    # 如果已經有真實官方截圖 (> 10KB)，直接回傳成功，不覆蓋它！
+    # 若已經有超過 10KB 的真實官方截圖，直接回傳 Completed，不重複抓取
     if os.path.exists(img_path) and os.path.getsize(img_path) > 10000:
         return {
             "route_key": route_key,
@@ -68,50 +63,75 @@ async def query_icao_and_screenshot(origin_icao: str, dest_icao: str, weight_kg:
             "status": "Completed"
         }
 
-    # 若在 GitHub Actions 環境下，啟動真實瀏覽器去 ICAO 官網截圖
+    # 在 GitHub Actions 中啟動真實 Chromium 瀏覽器前往 ICAO 官網截圖
     try:
         from playwright.async_api import async_playwright
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(viewport={"width": 1280, "height": 900})
+            browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+            context = await browser.new_context(viewport={"width": 1366, "height": 900})
             page = await context.new_page()
-            await page.goto("https://icec.icao.int/", wait_until="networkidle", timeout=60000)
-            await page.wait_for_timeout(2000)
+            
+            print(f"🌐 正在開啟 ICAO 官網: {origin_icao} -> {dest_icao}")
+            await page.goto("https://icec.icao.int/", wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(4000)
 
+            # 切換至 Cargo / Shipment 分頁 (若存在)
             cargo_tab = page.locator("text=/Cargo|Shipment/i").first
             if await cargo_tab.count() > 0:
                 await cargo_tab.click()
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(1500)
 
             inputs = page.locator("input[type='text'], input[type='search'], input[type='number']")
-            if await inputs.count() >= 2:
+            cnt = await inputs.count()
+            print(f"🔍 找到 {cnt} 個輸入框")
+
+            if cnt >= 2:
+                # 填入起點 ICAO 代碼並等待官網下拉選單跳出
+                await inputs.nth(0).click()
                 await inputs.nth(0).fill(origin_icao)
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(2500)
                 await page.keyboard.press("ArrowDown")
+                await page.wait_for_timeout(500)
                 await page.keyboard.press("Enter")
+                await page.wait_for_timeout(1000)
 
+                # 填入終點 ICAO 代碼並等待官網下拉選單跳出
+                await inputs.nth(1).click()
                 await inputs.nth(1).fill(dest_icao)
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(2500)
                 await page.keyboard.press("ArrowDown")
+                await page.wait_for_timeout(500)
                 await page.keyboard.press("Enter")
+                await page.wait_for_timeout(1000)
 
+                # 填入重量 (1 KG)
                 weight_input = page.locator("input[placeholder*='Weight' i], input[name*='weight' i]").first
                 if await weight_input.count() > 0:
-                    await weight_input.fill(str(w_float))
-                elif await inputs.count() >= 3:
-                    await inputs.nth(2).fill(str(w_float))
+                    await weight_input.fill(str(int(w_float) if w_float.is_integer() else w_float))
+                elif cnt >= 3:
+                    await inputs.nth(2).fill(str(int(w_float) if w_float.is_integer() else w_float))
 
-                calc_btn = page.locator("button:has-text('Calculate'), input[value*='Calculate']").first
+                await page.wait_for_timeout(1000)
+
+                # 點擊 Calculate 計算按鈕
+                calc_btn = page.locator("button:has-text('Calculate'), input[value*='Calculate'], .btn-primary").first
                 await calc_btn.click()
 
-                await page.wait_for_selector("text=Total Trip Distance", timeout=30000)
-                await page.wait_for_timeout(2000)
+                # 等待 Summary 結果區塊與國旗圖片完整載入
+                await page.wait_for_selector("text=/Summary|Total Trip Distance/i", timeout=45000)
+                await page.wait_for_timeout(3500)
 
+                # 擷取官方 Summary 區塊截圖
                 summary_box = page.locator("text=Summary").locator("..").locator("..")
-                await summary_box.screenshot(path=img_path)
+                if await summary_box.count() > 0:
+                    await summary_box.first.screenshot(path=img_path)
+                else:
+                    await page.screenshot(path=img_path)
+                print(f"📸 成功從官網擷取截圖: {img_path}")
+
             await browser.close()
     except Exception as e:
-        print(f"Streamlit 雲端環境不執行即時截圖，交由 GitHub Actions 排程處理: {e}")
+        print(f"⚠️ ICAO 官網連線或元素定位失敗 ({origin_icao}->{dest_icao}): {e}")
 
     has_real_img = os.path.exists(img_path) and os.path.getsize(img_path) > 10000
     return {
